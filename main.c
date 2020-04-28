@@ -1,14 +1,30 @@
+/*
+FINISHED : main mechanics, 2 animated sprites, parallax movement, state machine, cheat, sound, art
+NEED TO ADD : 
+BUGS : see glimpse of next rabbit when collision
+        
+
+HOW TO:
+    - Move left and right
+    - Aim food to feed rabbits
+    - A : Cookie (feeds brown rabbit)
+    - B : Carrot (feeds grey rabbit)
+    - L : Love Treat (feeds both / cheat)
+    - Don't let rabbits reach the garden
+*/
+
 #include "myLib.h"
 #include "spritesheet.h"
 // #include "game.h"
 #include "titlescreen.h"
 #include "directions.h"
 #include "pause.h"
-#include "win.h"
 #include "lose.h"
 #include "house.h"
 #include "sky.h"
-
+#include "mainsong.h"
+#include "losesong.h"
+#include "pausesong.h"
 
 // Prototypes
 void initialize();
@@ -56,9 +72,6 @@ int main() {
             case PAUSE:
                 pauseState();
                 break;    
-            case WIN:
-                winState();
-                break;
             case LOSE:
                 loseState();
                 break;
@@ -70,6 +83,8 @@ int main() {
 // Initialize the game on first launch
 void initialize() {
     REG_DISPCTL = MODE0 | BG0_ENABLE | BG1_ENABLE | SPRITE_ENABLE;
+    setupSounds();
+	setupInterrupts();
     goToStart();
 }
 
@@ -79,14 +94,21 @@ void goToStart() {
     REG_BG0CNT = BG_CHARBLOCK(0) | BG_SCREENBLOCK(28) | BG_SIZE_SMALL;
     DMANow(3, titlescreenTiles, &CHARBLOCK[0], titlescreenTilesLen / 2);
     DMANow(3, titlescreenMap, &SCREENBLOCK[28], titlescreenMapLen / 2);
+
+    playSoundA(mainsong, MAINSONGLEN, 1);
+
     // hides sprites during start screen
     hideSprites();
     waitForVBlank();
     DMANow(3, shadowOAM, OAM, 256);
+
+   REG_BG0HOFF = 0;
+
     state = START;
 }
 
 void goToDirections() {
+    REG_BG0HOFF = 0;
     DMANow(3, directionsPal, PALETTE, directionsPalLen / 2);
     REG_BG0CNT = BG_CHARBLOCK(0) | BG_SCREENBLOCK(28) | BG_SIZE_SMALL;
     DMANow(3, directionsTiles, &CHARBLOCK[0], directionsTilesLen / 2);
@@ -99,6 +121,9 @@ void goToDirections() {
 }
 
 void goToGame() {
+    REG_BG0HOFF = hOff;
+    REG_BG1HOFF = hOff;
+
     DMANow(3, housePal, PALETTE, housePalLen / 2);
     REG_BG0CNT = BG_CHARBLOCK(0) | BG_SCREENBLOCK(28) | BG_SIZE_WIDE;
     DMANow(3, houseTiles, &CHARBLOCK[0], houseTilesLen / 2);
@@ -111,38 +136,35 @@ void goToGame() {
     //spritesheet
     DMANow(3, spritesheetPal, SPRITEPALETTE, 256);
     DMANow(3, spritesheetTiles, &CHARBLOCK[4], spritesheetTilesLen / 2);
-    
-    hOff = 0;
+
     state = GAME;
 }
 
 void goToPause() {
+    REG_BG0HOFF = 0;
     DMANow(3, pausePal, PALETTE, pausePalLen / 2);
     REG_BG0CNT = BG_CHARBLOCK(0) | BG_SCREENBLOCK(28) | BG_SIZE_SMALL;
     DMANow(3, pauseTiles, &CHARBLOCK[0], pauseTilesLen / 2);
     DMANow(3, pauseMap, &SCREENBLOCK[28], pauseMapLen / 2);
+
+    playSoundB(pausesong, PAUSESONGLEN, 0);
+
     hideSprites();
     waitForVBlank();
     DMANow(3, shadowOAM, OAM, 256);
     state = PAUSE;
 }
 
-void goToWin() {
-    DMANow(3, winPal, PALETTE, winPalLen / 2);
-    REG_BG0CNT = BG_CHARBLOCK(0) | BG_SCREENBLOCK(28) | BG_SIZE_SMALL;
-    DMANow(3, winTiles, &CHARBLOCK[0], winTilesLen / 2);
-    DMANow(3, winMap, &SCREENBLOCK[28], winMapLen / 2);
-    hideSprites();
-    waitForVBlank();
-    DMANow(3, shadowOAM, OAM, 256);
-    state = WIN;
-}
-
 void goToLose() {
+    REG_BG0HOFF = 0;
+    hOff = 0;
     DMANow(3, losePal, PALETTE, losePalLen / 2);
     REG_BG0CNT = BG_CHARBLOCK(0) | BG_SCREENBLOCK(28) | BG_SIZE_SMALL;
     DMANow(3, loseTiles, &CHARBLOCK[0], loseTilesLen / 2);
     DMANow(3, loseMap, &SCREENBLOCK[28], loseMapLen / 2);
+    stopSound();
+    playSoundB(losesong, LOSESONGLEN, 0);
+
     hideSprites();
     waitForVBlank();
     DMANow(3, shadowOAM, OAM, 256);
@@ -172,51 +194,37 @@ void gameState() {
 
     updateGame();
     drawGame();
-        
-    // Scroll the background
-    // if(BUTTON_HELD(BUTTON_LEFT)) {
-    //     hOff--;
-    // }
-    // if(BUTTON_HELD(BUTTON_RIGHT)) {
-    // if(BUTTON_HELD(BUTTON_RIGHT)) {
-    //     hOff++;
-    // }
 
 	waitForVBlank();
-    DMANow(3, shadowOAM, OAM, 256);
+    DMANow(3, shadowOAM, OAM, 512);
 
     REG_BG0HOFF = hOff;
     REG_BG1HOFF = hOff / 2;
     if (BUTTON_PRESSED(BUTTON_START)) {
+        pauseSound();
         goToPause();
-    }
-    if (BUTTON_PRESSED(BUTTON_DOWN)) {
-        goToLose();
     }
 }
 
 void pauseState() {
     waitForVBlank();
     if (BUTTON_PRESSED(BUTTON_START)) {
+        stopSound();
+        // unpauseSound();
+
         goToGame();
+        playSoundA(mainsong, MAINSONGLEN, 1);
     }
     if (BUTTON_PRESSED(BUTTON_UP)) {
+        stopSound();
         goToStart();
-    }
-}
-
-void winState() {
-    waitForVBlank();
-    if (BUTTON_PRESSED(BUTTON_START)) {
-        goToStart();
-        // initGame();
     }
 }
 
 void loseState() {
     waitForVBlank();
     if (BUTTON_PRESSED(BUTTON_START)) {
+        stopSound();
         goToStart();
-        // initGame();
     }
 }

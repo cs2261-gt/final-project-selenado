@@ -5,11 +5,11 @@
 //
 //	directions, 256x256@4, 
 //	+ palette 256 entries, not compressed
-//	+ 341 tiles (t|f|p reduced) not compressed
+//	+ 408 tiles (t|f|p reduced) not compressed
 //	+ regular map (in SBBs), not compressed, 32x32 
-//	Total size: 512 + 10912 + 2048 = 13472
+//	Total size: 512 + 13056 + 2048 = 15616
 //
-//	Time-stamp: 2020-04-05, 13:08:29
+//	Time-stamp: 2020-04-20, 21:13:01
 //	Exported by Cearn's GBA Image Transmogrifier, v0.8.3
 //	( http://www.coranac.com/projects/#grit )
 //
@@ -18,8 +18,8 @@
 #ifndef GRIT_DIRECTIONS_H
 #define GRIT_DIRECTIONS_H
 
-#define directionsTilesLen 10912
-extern const unsigned short directionsTiles[5456];
+#define directionsTilesLen 13056
+extern const unsigned short directionsTiles[6528];
 
 #define directionsMapLen 2048
 extern const unsigned short directionsMap[1024];

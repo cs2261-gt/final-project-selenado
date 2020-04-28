@@ -1,30 +1,30 @@
 #include "myLib.h"
 #include "game.h"
 #include "spritesheet.h"
+#include "dingSound.h"
 
 // Variables
 int hOff;
 int vOff;
+int score;
+int throwCount;
 GRANNY gran;
 RABBIT rabbit;
 FOOD foods[FOODCOUNT];
 OBJ_ATTR shadowOAM[128];
-// int cookiesRemaining;
-// int playing;
 
 // Walking animation states for aniState
 enum {RIGHTTHROW,LEFTTHROW,RIGHTWALK,LEFTWALK,IDLEWALK};
 enum {RABFLOOR}; 
-// enum {RABFLOOR, RABLAUNCH, RABAIR};   // rabbit
 
 // Initialize the game
 void initGame() {
+    throwCount = 0;
+    score = 0;
     hOff = 0;
-    // playing = 1;
     initGran();
     initRabbits();
     initFoods();
-    // cookiesRemaining = COOKIECOUNT;
 }
 
 // Updates the game each frame
@@ -41,9 +41,8 @@ void drawGame() {
     drawGran();
     drawRabbits();
     drawFoods();
-    // waitForVBlank();
-    // DMANow(3, shadowOAM, OAM, 128 * 4);
-
+    drawScore();
+    drawImTired();
     REG_BG0HOFF = hOff;
 }
 
@@ -57,6 +56,7 @@ void initGran() {
 
     gran.active = 1;
     gran.aniCounter = 0;
+    gran.stunCounter = 0;
     gran.curFrame = 0;
     gran.numFrames = 3;
     gran.aniState = RIGHTWALK;//starting sprite
@@ -79,33 +79,23 @@ void updateGran() {
             if (hOff < MAPWIDTH - SCREENWIDTH && gran.screenCol > SCREENWIDTH / 2) {
                 hOff++;
             }
-        }
+        }  
     }
     
-    for (int i = 0; i < FOODCOUNT; i++) {
-        // throw cookies
-        if (BUTTON_PRESSED(BUTTON_A)) {
-            foods[i].type = 0;
-            fireFoods();
-        }
-        // throw carrots
-        if (BUTTON_PRESSED(BUTTON_B)) {
-            foods[i].type = 1;
-            fireFoods();
-        }
-
+    if (BUTTON_PRESSED(BUTTON_A)) { // throw cookies
+        throwCount++;
+        fireFoods(0);
+    } else if (BUTTON_PRESSED(BUTTON_B)) { // throw carrots
+        throwCount++;
+        fireFoods(1);
+    } else if (BUTTON_PRESSED(BUTTON_L)) { // throw love treat
+        throwCount++;
+        fireFoods(2);
     }
-
-    // // throw cookies
-    // if (BUTTON_PRESSED(BUTTON_A)) {
-        
-	// 	fireFoods();
-	// }
 
     gran.screenCol = gran.worldCol - hOff;
     gran.screenRow = gran.worldRow - vOff;
     animatePlayer();
-
 
 }
 
@@ -133,15 +123,13 @@ void animatePlayer() {
     // Control movement and change animation state
     if(BUTTON_HELD(BUTTON_LEFT)){
         gran.aniState = LEFTWALK;
-        hOff--;
         gran.direction = 1;
     }
     if(BUTTON_HELD(BUTTON_RIGHT)){
         gran.aniState = RIGHTWALK;
-        hOff++;
         gran.direction = 0;
     }
-    if(BUTTON_PRESSED(BUTTON_A)) {
+    if(BUTTON_PRESSED(BUTTON_A) || BUTTON_PRESSED(BUTTON_B) || BUTTON_PRESSED(BUTTON_L)) {
         if(gran.direction){
             gran.aniState = LEFTTHROW;
 
@@ -160,26 +148,23 @@ void animatePlayer() {
     }
 }
 
-
-
 // Draw Gran
 void drawGran() {
     if (gran.active) {
         shadowOAM[0].attr0 = (ROWMASK & gran.screenRow) | ATTR0_TALL;
         shadowOAM[0].attr1 = (COLMASK & gran.screenCol) | ATTR1_LARGE;
-        if (gran.aniState == RIGHTWALK || gran.aniState == LEFTWALK || gran.aniState == IDLEWALK) {
-            shadowOAM[0].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(gran.aniState * 4, gran.curFrame * 8);
-        } 
-        else {
-            shadowOAM[0].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(gran.aniState * 4, gran.curFrame * 8);
+        if(gran.cdel == 1) {
+            if (gran.aniState == RIGHTWALK || gran.aniState == LEFTWALK || gran.aniState == IDLEWALK) {
+                shadowOAM[0].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(gran.aniState * 4, gran.curFrame * 8);
+            } 
+            else {
+                shadowOAM[0].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(gran.aniState * 4, gran.curFrame * 8);
+            }
         }
+
     } else {
         shadowOAM[0].attr0 = ATTR0_HIDE;
     }
-
-
-        // shadowOAM[0].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(0, 0);
-
 }
 
 // Initializes Rabbits
@@ -187,28 +172,25 @@ void initRabbits() {
     rabbit.worldRow = 135;
     // Make appear in front of gran
     rabbit.worldCol = ((rand() + 250) % 512) + gran.screenCol;
-    rabbit.cdel = 1;
     rabbit.width = 64;
     rabbit.height = 64;
     rabbit.type = (rand() + 60) % 2;
-
     rabbit.active = 1;
     rabbit.aniCounter = 0;
     rabbit.curFrame = 0;
     rabbit.numFrames = 3;
-    // rabbit.aniState = RABFLOOR;
 }
 
 // Updates Rabbits
 void updateRabbits() {
-    if(rabbit.aniCounter == 25) {
+    if(rabbit.aniCounter == 16) {
         rabbit.curFrame = (rabbit.curFrame + 1) % rabbit.numFrames;
         rabbit.aniCounter = 0;
     }
     rabbit.aniCounter++;
 
     // Move rabbit left
-    rabbit.worldCol--;
+    rabbit.worldCol -= 1.1;
     // Move rabbit up and down
     if (rabbit.curFrame == 0) {
         rabbit.worldRow = 135;
@@ -221,12 +203,6 @@ void updateRabbits() {
     rabbit.screenCol = rabbit.worldCol - hOff;
     rabbit.screenRow = rabbit.worldRow - vOff;
 
-    if (rabbit.worldCol == 60) {
-        rabbit.active = 0;
-        gran.active = 0;
-        goToLose();
-    }
-
 }
 
 // Draw Rabbits
@@ -237,11 +213,9 @@ void drawRabbits() {
         if (rabbit.type == 0) {
             shadowOAM[5].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(16, rabbit.curFrame * 4);
         } else if (rabbit.type == 1) {
-            shadowOAM[5].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(24, rabbit.curFrame * 4);
+            shadowOAM[5].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(16, 12 + (rabbit.curFrame * 4));
 
         }
-
-        // shadowOAM[5].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID((rabbit.aniState * 8) + 16, rabbit.curFrame * 4);
     } else {  //hide sprite if not active
         shadowOAM[5].attr0 = ATTR0_HIDE;
     }
@@ -258,16 +232,19 @@ void initFoods() {
 		foods[i].active = 0;
         foods[i].height = 16;
 		foods[i].width = 16;
+        // carrot/cookie worth 3 points
+        foods[i].worth = 0;
 	}
 }
 
 // Fires Foods
-void fireFoods() {
+void fireFoods(int type) {
 
 	// find the first inactive foods, initialize it, and set it active
 	for(int i = 0; i < FOODCOUNT; i++) {
-		if (foods[i].active == 0) {
+		if (foods[i].active == 0 && gran.cdel == 1) {
 			foods[i].active = 1;
+            foods[i].type = type;
 			foods[i].screenRow = 105;
 			foods[i].screenCol = gran.screenCol + 5;
             foods[i].worldCol = gran.worldCol + 5;
@@ -292,21 +269,41 @@ void updateFoods(FOOD * f) {
         f->worldCol += f->cdel;
 
         // Food - rabbit collision
-        if (f->type == 0 && rabbit.type == 0) { // cookie
-            if (collision(f->screenCol, f->screenRow, f->width, f->height, rabbit.screenCol, rabbit.screenRow, rabbit.width, rabbit.height)) {
+        if ((f->type == 0 || f->type == 2) && rabbit.type == 0) { // cookie & cheat cookie
+            if (f->active && collision(f->screenCol, f->screenRow, f->width, f->height, rabbit.screenCol, rabbit.screenRow, rabbit.width, rabbit.height)) {
                 f->active = 0;
                 // Respawn Rabbit
                 rabbit.type = rand() % 2; // randomize type of new rabbit
                 rabbit.worldCol = gran.worldCol + (rand() % 150) + 150; // 100 - 200 px in front of gran
+                // cookie worth 3 point
+                if (f->type == 0) {
+                    f->worth = 3;
+                }
+                // cheat only worth 1 point
+                if (f->type == 2) {
+                    f->worth = 1;
+                }
+
+                score += f->worth;
+                playSoundB(dingSound, DINGSOUNDLEN - 100, 0);
             }
-        } else if (f->type == 1 && rabbit.type == 1) { // carrot
-            if (collision(f->screenCol, f->screenRow, f->width, f->height, rabbit.screenCol, rabbit.screenRow, rabbit.width, rabbit.height)) {
+        } else if ((f->type == 1 || f->type == 2) && rabbit.type == 1) { // carrot & cheat cookie
+            if (f->active && collision(f->screenCol, f->screenRow, f->width, f->height, rabbit.screenCol, rabbit.screenRow, rabbit.width, rabbit.height)) {
                 f->active = 0;
                 rabbit.type = (rand() + 3) % 2; // randomize type of new rabbit
                 rabbit.worldCol = gran.worldCol + (rand() % 150) + 150; 
+                // carrot worth 3 point
+                if (f->type == 1) {
+                    f->worth = 3;
+                }
+                // cheat only worth 1 point
+                if (f->type == 2) {
+                    f->worth = 1;
+                }
+                score += f->worth;
+                playSoundB(dingSound, DINGSOUNDLEN - 100, 0);
             }
         }
-
 
         f->screenCol = f->worldCol - hOff;
 
@@ -314,28 +311,77 @@ void updateFoods(FOOD * f) {
             f->active = 0;
         }
 	}
+
+    // reaches garden
+    if (rabbit.worldCol <= 60) {
+        rabbit.active = 0;
+        gran.active = 0;
+        f->active = 0;
+        goToLose();
+    }
+
+    // pauses granny
+    if (throwCount >= 5) {
+        gran.cdel = 0;
+        gran.stunCounter++;
+    }
+    if (gran.stunCounter >= 230) {
+        gran.cdel = 1;
+        throwCount = 0;
+        gran.stunCounter = 0;
+    }
 }
 
 // Draw Foods
 void drawFoods() {
     for (int i = 0; i < FOODCOUNT; i++) {
         if (foods[i].active) {
-            shadowOAM[10].attr0 = (ROWMASK & foods[i].screenRow) | ATTR0_SQUARE;
-            shadowOAM[10].attr1 = (COLMASK & foods[i].screenCol) | ATTR1_SMALL;
-            if (foods[i].type == 0) {
-                shadowOAM[10].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(0, 24);
-            } else if (foods[i].type == 1) {
+            shadowOAM[10 + i].attr0 = (ROWMASK & foods[i].screenRow) | ATTR0_SQUARE;
+            shadowOAM[10 + i].attr1 = (COLMASK & foods[i].screenCol) | ATTR1_SMALL;
+            if (foods[i].type == 0) {  // cookie
+                shadowOAM[10 + i].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(0, 24);
+            } else if (foods[i].type == 1) {  // carrot
                 // hard code for now because aniState isn't always mapped to the correct carrot direction
                 int tileCol = 0;
                 if (gran.aniState == LEFTWALK || gran.aniState == LEFTTHROW) {
                     tileCol = 2;
                 }
-                shadowOAM[10].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(tileCol, 26);
+                shadowOAM[10 + i].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(tileCol, 26);
+            } else if (foods[i].type == 2) { // cheat
+                shadowOAM[10 + i].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(0, 28); 
             }
         } else { // hide sprite if not active
-            shadowOAM[10+i].attr0 = ATTR0_HIDE;
+            shadowOAM[10 + i].attr0 = ATTR0_HIDE;
         }
     }
 
 }
 
+// Helper for drawScore()
+int getNum(int num, int digit) {
+    num /= pow(10, digit);
+    return num % 10;
+}
+
+// Draws Score
+void drawScore() {
+    for (int i = 0; i < 3; i++) {
+        if (gran.active) {
+            shadowOAM[15 + i].attr0 = 10 | ATTR0_SQUARE;
+            shadowOAM[15 + i].attr1 = ATTR1_SMALL | (SCREENWIDTH / 2 - (10 * i) + 3);
+            shadowOAM[15 + i].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(2 * getNum(score, i), 30);
+        } else { // hide sprite if not active
+            shadowOAM[15 + i].attr0 = ATTR0_HIDE;
+        }
+    }
+}
+
+void drawImTired() {
+    if (gran.active && gran.cdel == 0) {
+        shadowOAM[18].attr0 = 10 | ATTR0_WIDE | gran.worldRow - 25;
+        shadowOAM[18].attr1 = ATTR1_LARGE | gran.screenCol;
+        shadowOAM[18].attr2 = ATTR2_PALROW(0) | ATTR2_TILEID(4, 24);
+    } else { // hide sprite if not active
+        shadowOAM[18].attr0 = ATTR0_HIDE;
+    }
+}
